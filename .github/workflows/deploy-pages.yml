@@ -1,0 +1,77 @@
+name: Deploy GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: 'Ambiente de deploy'
+        required: true
+        type: choice
+        options:
+          - pre
+          - prod
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build Angular
+        run: |
+          if [ "${{ inputs.ambiente }}" = "pre" ]; then
+            npx ng build --configuration production --base-href "/${{ github.repository }}/pre/"
+          else
+            npx ng build --configuration production --base-href "/${{ github.repository }}/"
+          fi
+
+      - name: Publicar na branch gh-pages
+        run: |
+          set -e
+          DIST="dist/aprendendo-processos/browser"
+          WORKDIR=$(mktemp -d)
+          REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+
+          # Clona gh-pages se existir; senão cria do zero
+          if git clone --depth 1 --branch gh-pages "$REPO_URL" "$WORKDIR" 2>/dev/null; then
+            cd "$WORKDIR"
+          else
+            mkdir -p "$WORKDIR"
+            cd "$WORKDIR"
+            git init -b gh-pages
+            git remote add origin "$REPO_URL"
+          fi
+
+          touch .nojekyll
+
+          if [ "${{ inputs.ambiente }}" = "pre" ]; then
+            # Deploy de pré: apaga só a pasta pre/ e recria
+            rm -rf pre
+            mkdir -p pre
+            cp -r "$GITHUB_WORKSPACE/$DIST/." pre/
+          else
+            # Deploy de prod: apaga tudo na raiz exceto .git e a pasta pre/
+            find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name 'pre' -exec rm -rf {} +
+            cp -r "$GITHUB_WORKSPACE/$DIST/." .
+          fi
+
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -m "deploy(${AMBIENTE}): $(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)" || echo "Nada para commitar"
+          git push origin gh-pages
+        env:
+          AMBIENTE: ${{ inputs.ambiente }}
