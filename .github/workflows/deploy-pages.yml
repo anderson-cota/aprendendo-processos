@@ -33,9 +33,9 @@ jobs:
       - name: Build Angular
         run: |
           if [ "${{ inputs.ambiente }}" = "pre" ]; then
-            npx ng build --configuration production --base-href "/${{ github.repository }}/pre/"
+            npx ng build --configuration production --base-href "/${{ github.event.repository.name }}/pre/"
           else
-            npx ng build --configuration production --base-href "/${{ github.repository }}/"
+            npx ng build --configuration production --base-href "/${{ github.event.repository.name }}/"
           fi
 
       - name: Publicar na branch gh-pages
